@@ -10,6 +10,8 @@ import base64
 import urllib3
 import boto3
 
+from botocore.exceptions import ClientError
+from zipfile import ZipFile
 from datetime import datetime
 from tempfile import mkdtemp
 from PIL import Image
@@ -65,15 +67,18 @@ class ImageScraper:
         try:
             image_file = io.BytesIO(image_content)
             pil_image = Image.open(image_file).convert('RGB')
-            in_mem_file = io.BytesIO()
-            pil_image.save(in_mem_file, format=format)
+            #in_mem_file = io.BytesIO()
+            #pil_image.save(in_mem_file, format=format)
             
-            return base64.b64encode(in_mem_file.getvalue())
+            return pil_image #base64.b64encode(in_mem_file.getvalue())
         except Exception as e:
             print("Could not get image data: {}".format(e))
+            return None
 
     def close_connection(self):
+        print("closing the connection...")
         self.driver.close()
+        print("closed the connection...")
 
     def __download_image_content(self, url):
         try:
@@ -128,27 +133,53 @@ class ImageScraper:
 def lambda_handler(event, context):
     start_time = datetime.now()
     
-    client = boto3.client("apigatewaymanagementapi", endpoint_url="https://onedv62i9e.execute-api.ap-northeast-2.amazonaws.com/production")
+    boto3_client = boto3.client("apigatewaymanagementapi", endpoint_url="https://onedv62i9e.execute-api.ap-northeast-2.amazonaws.com/production")
+    s3_client = boto3.client('s3')
     scr = ImageScraper()
     
+    
     body = json.loads(event["body"])
-    keyword = body["message"]["keyword"] #"cat" #
-    count = int(body["message"]["count"]) #3 # 
+    keyword = body["message"]["keyword"] #
+    count = int(body["message"]["count"]) #
     connectionId = event["requestContext"]["connectionId"]
     
     urls = list(scr.get_image_urls(query=keyword, max_urls=count, sleep_between_interactions=1))
-    # files= []
-    # for url in urls:
-    #     img_obj = scr.get_in_memory_image(url, 'jpeg')
-    #     files.append(img_obj.decode('utf-8'))
+    images = []
     
-    #print("Successfully loaded {} images".format(count))
+    for i in range(len(urls)):
+        pil_image = scr.get_in_memory_image(urls[i], 'PNG')
+        if not pil_image:
+            continue
+        file_object = io.BytesIO()
+        pil_image.save(file_object, 'PNG')
+        pil_image.close()
+        images.append([str(i), file_object])
     
-    scr.close_connection()
+    path = '/tmp/' + keyword + '.zip'    
+    with ZipFile(path, 'w') as zip_file:
+        for i, (image_name, bytes_stream) in enumerate (images):
+            if not images[i]:
+                continue
+            zip_file.writestr(image_name+'.png', bytes_stream.getvalue())
+        print(zip_file.infolist())
+        
+    print("Successfully loaded {} images".format(count))
     
-    response = client.post_to_connection(ConnectionId=connectionId, Data=json.dumps(
+    file_name = keyword+'.zip'
+    try:
+        upload_response = s3_client.upload_file(path, 'intizar-bucket', file_name)
+    except ClientError as e:
+        print(e)
+        
+    try:
+        url_response = s3_client.generate_presigned_url('get_object', Params={'Bucket':'intizar-bucket', 'Key': file_name}, ExpiresIn=100)
+        print(url_response)
+    except ClientError as e:
+        print(e)
+    
+    response = boto3_client.post_to_connection(ConnectionId=connectionId, Data=json.dumps(
         {
-            "imageURLs": urls,
+            "imageURLs": url_response,
             "duration": datetime.now().timestamp() - start_time.timestamp(),
         }
     ))

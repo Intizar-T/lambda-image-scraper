@@ -3,3 +3,4 @@ selenium
 beautifulsoup4
 Pillow
 webdriver-manager
+zipfile36
