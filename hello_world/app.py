@@ -173,7 +173,7 @@ def lambda_handler(event, context):
         
     try:
         url_response = s3_client.generate_presigned_url('get_object', Params={'Bucket':'intizar-bucket', 'Key': file_name}, ExpiresIn=100)
-        print(url_response)
+        # print(url_response)
     except ClientError as e:
         print(e)
     
