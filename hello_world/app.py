@@ -1,5 +1,4 @@
 import json
-import logging
 import sys
 import os
 import io
@@ -131,57 +130,95 @@ class ImageScraper:
         return options
 
 def lambda_handler(event, context):
-    start_time = datetime.now()
-    
-    boto3_client = boto3.client("apigatewaymanagementapi", endpoint_url="https://onedv62i9e.execute-api.ap-northeast-2.amazonaws.com/production")
-    s3_client = boto3.client('s3')
-    scr = ImageScraper()
-    
-    
     body = json.loads(event["body"])
-    keyword = body["message"]["keyword"] #
-    count = int(body["message"]["count"]) #
-    connectionId = event["requestContext"]["connectionId"]
+    method = body["message"]["method"]
+    boto3_client = boto3.client("apigatewaymanagementapi", endpoint_url="https://onedv62i9e.execute-api.ap-northeast-2.amazonaws.com/production")
+    db_client = boto3.client('dynamodb')
+    # print(event["requestContext"]["connectionId"])
     
-    urls = list(scr.get_image_urls(query=keyword, max_urls=count, sleep_between_interactions=1))
-    images = []
-    
-    for i in range(len(urls)):
-        pil_image = scr.get_in_memory_image(urls[i], 'PNG')
-        if not pil_image:
-            continue
-        file_object = io.BytesIO()
-        pil_image.save(file_object, 'PNG')
-        pil_image.close()
-        images.append([str(i), file_object])
-    
-    path = '/tmp/' + keyword + '.zip'    
-    with ZipFile(path, 'w') as zip_file:
-        for i, (image_name, bytes_stream) in enumerate (images):
-            if not images[i]:
+    if(method == "POST"):
+        s3_client = boto3.client('s3')
+        scr = ImageScraper()
+        
+        keyword = body["message"]["keyword"]
+        count = int(body["message"]["count"])
+        
+        connectionId = event["requestContext"]["connectionId"]
+        response = boto3_client.post_to_connection(ConnectionId=connectionId, Data=json.dumps(
+            {
+                "connectionId": connectionId
+            }
+        ))
+        
+        urls = list(scr.get_image_urls(query=keyword, max_urls=count, sleep_between_interactions=1))
+        images = []
+        
+        for i in range(len(urls)):
+            pil_image = scr.get_in_memory_image(urls[i], 'PNG')
+            if not pil_image:
                 continue
-            zip_file.writestr(image_name+'.png', bytes_stream.getvalue())
-        print(zip_file.infolist())
+            file_object = io.BytesIO()
+            pil_image.save(file_object, 'PNG')
+            pil_image.close()
+            images.append([str(i), file_object])
         
-    print("Successfully loaded {} images".format(count))
-    
-    file_name = keyword+'.zip'
-    try:
-        upload_response = s3_client.upload_file(path, 'intizar-bucket', file_name)
-    except ClientError as e:
-        print(e)
+        path = '/tmp/' + keyword + '.zip'    
+        with ZipFile(path, 'w') as zip_file:
+            for i, (image_name, bytes_stream) in enumerate (images):
+                if not images[i]:
+                    continue
+                zip_file.writestr(image_name+'.png', bytes_stream.getvalue())
+            print(zip_file.infolist())
+            
+        print("Successfully loaded {} images".format(count))
         
-    try:
-        url_response = s3_client.generate_presigned_url('get_object', Params={'Bucket':'intizar-bucket', 'Key': file_name}, ExpiresIn=100)
-        # print(url_response)
-    except ClientError as e:
-        print(e)
+        file_name = keyword+'.zip'
+        
+        try:
+            upload_response = s3_client.upload_file(path, 'intizar-bucket', file_name)
+        except ClientError as e:
+            print(e)
+            
+        try:
+            url_response = s3_client.generate_presigned_url('get_object', Params={'Bucket':'intizar-bucket', 'Key': file_name}, ExpiresIn=30000)
+        except ClientError as e:
+            print(e)
+            
+        try:
+            db_response = db_client.put_item(
+                TableName = 'image-scraper',
+                Item= {
+                    'id': {
+                        'S': connectionId  
+                    },
+                    'url': {
+                        'S': url_response
+                    }
+                }
+            )
+        except ClientError as e:
+            print(e)
+        
+        return { "statusCode": 200 }
     
-    response = boto3_client.post_to_connection(ConnectionId=connectionId, Data=json.dumps(
-        {
-            "imageURLs": url_response,
-            "duration": datetime.now().timestamp() - start_time.timestamp(),
-        }
-    ))
-    
-    return { "statusCode": 200 }
+    elif(method == "GET"):
+        connectionId = body["message"]["connectionId"]
+        db_response = ""
+        try:
+            db_response = db_client.get_item(
+                TableName = 'image-scraper',
+                Key={
+                    'id': {
+                        'S': connectionId
+                    }
+                }
+            )
+            print(db_response)
+        except ClientError as e:
+            print(e)
+        
+        response = boto3_client.post_to_connection(ConnectionId=connectionId, Data=json.dumps(
+            {
+                "url": db_response
+            }
+        ))
