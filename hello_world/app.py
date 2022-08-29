@@ -171,13 +171,16 @@ def lambda_handler(event, context):
         print(e)
         
     try:
-        url_response = s3_client.generate_presigned_url('get_object', Params={'Bucket':'intizar-bucket', 'Key': file_name}, ExpiresIn=30000)
+        url_response = s3_client.generate_presigned_url('get_object', Params={'Bucket':'intizar-bucket', 'Key': file_name})
+        print(url_response)
+        boto3_client = boto3.client("apigatewaymanagementapi", endpoint_url="https://onedv62i9e.execute-api.ap-northeast-2.amazonaws.com/production")
+        response = boto3_client.post_to_connection(ConnectionId=connectionId, Data=json.dumps(
+            {
+                "url": url_response
+            }
+        ))
+        
     except ClientError as e:
         print(e)
-        
-    response = boto3_client.post_to_connection(ConnectionId=connectionId, Data=json.dumps(
-        {
-            "url": url_response
-        }
-    ))
+    
     return { "statusCode": 200 }
