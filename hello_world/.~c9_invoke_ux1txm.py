@@ -175,6 +175,7 @@ def lambda_handler(event, context):
     except ClientError as e:
         print(e)
         
+    boto3_client = boto3.client("apigatewaymanagementapi", endpoint_url="https://onedv62i9e.execute-api.ap-northeast-2.amazonaws.com/production")
     response = boto3_client.post_to_connection(ConnectionId=connectionId, Data=json.dumps(
         {
             "url": url_response
