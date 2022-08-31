@@ -46,10 +46,10 @@ class ImageScraper:
                 self.__add_image_urls_to_set(image_urls)
                 image_count = len(image_urls)
                 if image_count >= max_urls:
-                    print("Found: {} image links, done!".format(len(image_urls)))
+                    # print("Found: {} image links, done!".format(len(image_urls)))
                     break
-            else:
-                print("Found: {} image links, looking for more ...".format(len(image_urls)))
+                # else:
+                #     print("Found: {} image links, looking for more ...".format(len(image_urls)))
 
                 load_more_button = self.driver.find_elements(By.CSS_SELECTOR, ".mye4qd")
                 if load_more_button:
@@ -159,7 +159,7 @@ def lambda_handler(event, context):
             if not images[i]:
                 continue
             zip_file.writestr(image_name+'.png', bytes_stream.getvalue())
-        print(zip_file.infolist())
+        # print(zip_file.infolist())
         
     print("Successfully loaded {} images".format(count))
     
@@ -172,8 +172,8 @@ def lambda_handler(event, context):
         
     try:
         url_response = s3_client.generate_presigned_url('get_object', Params={'Bucket':'intizar-bucket', 'Key': file_name})
-        print(url_response)
-        boto3_client = boto3.client("apigatewaymanagementapi", endpoint_url="https://onedv62i9e.execute-api.ap-northeast-2.amazonaws.com/production")
+        # print(url_response)
+        
         response = boto3_client.post_to_connection(ConnectionId=connectionId, Data=json.dumps(
             {
                 "url": url_response
