@@ -53,7 +53,6 @@ class ImageScraper:
 
                 load_more_button = self.driver.find_elements(By.CSS_SELECTOR, ".mye4qd")
                 if load_more_button:
-                    print("loading more...")
                     self.driver.execute_script("document.querySelector('.mye4qd').click();")
 
             # move the result startpoint further down
@@ -141,6 +140,8 @@ def lambda_handler(event, context):
     
     connectionId = event["requestContext"]["connectionId"]
     
+    file_name = connectionId + keyword + '.zip'
+    
     urls = list(scr.get_image_urls(query=keyword, max_urls=count, sleep_between_interactions=1))
     images = []
     
@@ -163,7 +164,6 @@ def lambda_handler(event, context):
         
     print("Successfully loaded {} images".format(count))
     
-    file_name = keyword+'.zip'
     
     try:
         upload_response = s3_client.upload_file(path, 'intizar-bucket', file_name)
